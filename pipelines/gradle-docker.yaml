@@ -1,0 +1,135 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: java-build
+spec:
+  description: |
+    Build Java Gradle Projects
+  params:
+    - name: git-repo
+      type: string
+    - name: ecr-repo
+      default: <AWS_ACC_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com
+      type: string
+    - name: git-revision
+      default: master
+      type: string
+    - name: image # app/devops-dummy-app
+      type: string
+    - name: argocd-git-repo
+      type: string
+    - name: argocd-git-revision
+      type: string
+    - name: argocd-local-file
+      type: string
+  workspaces:
+    - name: shared-data
+    - name: git-credentials
+    - name: aws-credentials
+    - name: docker-config
+  tasks:
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data
+        - name: ssh-directory
+          workspace: git-credentials
+      params:
+        - name: url
+          value: $(params.git-repo)
+        - name: revision
+          value: $(params.git-revision)
+    - name: gradle
+      runAfter:
+        - fetch-source
+      taskRef:
+        name: gradle
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: ecr-login
+      runAfter:
+        - gradle
+      taskRef:
+        name: aws-ecr-login
+      workspaces:
+        - name: secrets
+          workspace: aws-credentials
+    - name: build-push-image
+      runAfter:
+        - "ecr-login"
+      taskRef:
+        name: kaniko
+      workspaces:
+        - name: source
+          workspace: shared-data
+        - name: dockerconfig
+          workspace: docker-config
+        - name: aws-credentials
+          workspace: aws-credentials
+      params:
+        - name: IMAGE
+          value: "$(params.ecr-repo)/$(params.image):$(params.git-revision)-$(tasks.fetch-source.results.commit)"
+        - name: DOCKERFILE
+          value: ./Dockerfile
+    - name: fetch-argocd
+      when:
+        - input: "$(params.argocd-git-repo)"
+          operator: notin
+          values: [""]
+      runAfter:
+        - build-push-image
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data
+        - name: ssh-directory
+          workspace: git-credentials
+      params:
+        - name: url
+          value: $(params.argocd-git-repo)
+        - name: revision
+          value: $(params.argocd-git-revision)
+        - name: subdirectory
+          value: argocd
+    - name: local-changes
+      when:
+        - input: "$(params.argocd-local-file)"
+          operator: notin
+          values: [""]
+      runAfter:
+        - fetch-argocd
+      taskRef:
+        name: bash
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: BASH_SCRIPT
+          value: |
+            sed -i "s,.*image: .*,          image: $(params.ecr-repo)/$(params.image):$(params.git-revision)-$(tasks.fetch-source.results.commit),g" $(params.argocd-local-file)
+    - name: change-argocd
+      when:
+        - input: "$(params.argocd-git-repo)"
+          operator: notin
+          values: [""]
+      runAfter:
+        - local-changes
+      taskRef:
+        name: git-cli
+      workspaces:
+        - name: source
+          workspace: shared-data
+        - name: ssh-directory
+          workspace: git-credentials
+      params:
+        - name: GIT_SCRIPT
+          value: |
+            git checkout $(params.argocd-git-revision)
+            git status
+            git add .
+            git commit -m "Update deployment" -a
+            git push

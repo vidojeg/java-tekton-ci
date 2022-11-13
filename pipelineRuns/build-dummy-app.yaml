@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: dummy-app-build-
+spec:
+  pipelineRef:
+    name: java-build
+  workspaces:
+  - name: shared-data
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  - name: git-credentials
+    secret:
+      secretName: git-credentials
+  - name: aws-credentials
+    secret:
+      secretName: aws-credentials
+  - name: docker-config
+    secret:
+      secretName: docker-config      
+  params:
+  - name: git-repo
+    value: git@github.com:<ORG_NAME>/<REPO_NAME>.git
+  - name: git-revision
+    value: master
+  - name: image
+    value: <ECR_REPO_NAME>
+  - name: argocd-git-repo
+    value: ""
+  - name: argocd-git-revision
+    value: ""
+  - name: argocd-local-file
+    value: ""
