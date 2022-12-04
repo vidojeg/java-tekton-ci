@@ -24,6 +24,7 @@ If you want to include ArgoCD for the CD part just insert:
 
 - git-clone
 - java-gradle
+- sonar
 - ecr-login
 - kaniko
 
@@ -59,4 +60,12 @@ metadata:
 data:
   id_rsa:
 ```
-  
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sonar-credentials
+data:
+  login: 
+```
