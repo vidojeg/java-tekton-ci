@@ -22,11 +22,14 @@ spec:
       type: string
     - name: argocd-local-file
       type: string
+    - name: SONAR_HOST_URL
+      type: string
   workspaces:
     - name: shared-data
     - name: git-credentials
     - name: aws-credentials
     - name: docker-config
+    - name: sonar-credentials
   tasks:
     - name: fetch-source
       taskRef:
@@ -49,9 +52,26 @@ spec:
       workspaces:
         - name: source
           workspace: shared-data
-    - name: ecr-login
+    - name: sonarqube
+      when:
+        - input: "$(params.SONAR_HOST_URL)"
+          operator: notin
+          values: [""]
       runAfter:
         - gradle
+      taskRef:
+        name: sonarqube-scanner
+      workspaces:
+        - name: source
+          workspace: shared-data
+        - name: sonar-credentials
+          workspace: sonar-credentials
+      params:
+        - name: SONAR_HOST_URL
+          value: $(params.SONAR_HOST_URL)
+    - name: ecr-login
+      runAfter:
+        - sonarqube
       taskRef:
         name: aws-ecr-login
       workspaces:
@@ -59,7 +79,7 @@ spec:
           workspace: aws-credentials
     - name: build-push-image
       runAfter:
-        - "ecr-login"
+        - ecr-login
       taskRef:
         name: kaniko
       workspaces:
