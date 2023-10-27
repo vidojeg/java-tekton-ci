@@ -25,7 +25,7 @@ spec:
       secretName: docker-config
   - name: sonar-credentials
     secret:
-      secretname: sonar-credentials   
+      secretName: sonar-credentials
   params:
   - name: git-repo
     value: git@github.com:<ORG_NAME>/<REPO_NAME>.git
